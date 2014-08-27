@@ -24,16 +24,14 @@ and GC could collect them once `WeakHandler` instance is not referenced any more
 
 Usage
 -----
-Clone project to your local machine, then run
-```shell
-cd android-weak-handler
-gradle uploadArchives
-```
-
 Add reference to your build.gradle:
 ```groovy
 repositories {
-    mavenLocal()
+    maven {
+        repositories {
+            url 'https://oss.sonatype.org/content/repositories/releases/'
+        }
+    }
 }
 
 dependencies {

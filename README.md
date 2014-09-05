@@ -12,7 +12,7 @@ If you create anonymous Runnable and call to `postDelayed` with large timeout, t
 in memory until timeout passes. Even if your Runnable seems small, it indirectly references owner class, 
 which is usually something as big as Activity or Fragment.
  
-Very soon we will post article with much more details.
+You can read more [on our blog post.](http://techblog.badoo.com/blog/2014/08/28/android-handler-memory-leaks)
 
 Solution
 --------

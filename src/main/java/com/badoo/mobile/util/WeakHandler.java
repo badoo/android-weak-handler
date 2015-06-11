@@ -29,6 +29,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.annotation.VisibleForTesting;
 
 import java.lang.ref.WeakReference;
 import java.util.concurrent.locks.Lock;
@@ -55,7 +56,8 @@ public class WeakHandler {
     private final ExecHandler mExec;
     private Lock mLock = new ReentrantLock();
     @SuppressWarnings("ConstantConditions")
-    private final ChainedRef mRunnables = new ChainedRef(mLock, null);
+    @VisibleForTesting
+    final ChainedRef mRunnables = new ChainedRef(mLock, null);
 
     /**
      * Default constructor associates this handler with the {@link Looper} for the
@@ -382,10 +384,8 @@ public class WeakHandler {
         if (r == null) {
             throw new NullPointerException("Runnable can't be null");
         }
-        // In previous version we tried to reuse ChainedRef references from pool
-        // unfortunately it caused several concurrency issues, so now we don't reuse them
         final ChainedRef hardRef = new ChainedRef(mLock, r);
-        mRunnables.insertAbove(hardRef);
+        mRunnables.insertAfter(hardRef);
         return hardRef.wrapper;
     }
 
@@ -464,8 +464,7 @@ public class WeakHandler {
             this.wrapper = new WeakRunnable(new WeakReference<>(r), new WeakReference<>(this));
         }
 
-        public void remove() {
-            final Lock lock = this.lock;
+        public WeakRunnable remove() {
             lock.lock();
             try {
                 if (prev != null) {
@@ -479,9 +478,10 @@ public class WeakHandler {
             } finally {
                 lock.unlock();
             }
+            return wrapper;
         }
 
-        public void insertAbove(@NonNull ChainedRef candidate) {
+        public void insertAfter(@NonNull ChainedRef candidate) {
             lock.lock();
             try {
                 if (this.next != null) {
@@ -502,19 +502,15 @@ public class WeakHandler {
             try {
                 ChainedRef curr = this.next; // Skipping head
                 while (curr != null) {
-                    if (curr.runnable.equals(obj)) {
-                        break;
+                    if (curr.runnable == obj) { // We do comparison exactly how Handler does inside
+                        return curr.remove();
                     }
                     curr = curr.next;
                 }
-                if (curr == null)
-                    return null;
-                WeakRunnable result = curr.wrapper;
-                curr.remove();
-                return result;
             } finally {
                 lock.unlock();
             }
+            return null;
         }
     }
 }

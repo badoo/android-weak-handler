@@ -23,6 +23,7 @@ package com.badoo.mobile.util;
 import android.os.HandlerThread;
 import android.os.SystemClock;
 import android.support.test.runner.AndroidJUnit4;
+import android.test.FlakyTest;
 import android.test.suitebuilder.annotation.MediumTest;
 
 import com.badoo.mobile.util.WeakHandler.ChainedRef;
@@ -32,7 +33,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -70,6 +71,7 @@ public class WeakHandlerTest {
         mHandler.getLooper().quit();
     }
 
+    @FlakyTest
     @Test
     public void postDelayed() throws InterruptedException {
         final CountDownLatch latch = new CountDownLatch(1);
@@ -88,7 +90,7 @@ public class WeakHandlerTest {
         assertTrue(executed.get());
 
         long elapsedTime = SystemClock.elapsedRealtime() - startTime;
-        assertTrue("Elapsed time should be 300, but was " + elapsedTime, elapsedTime <= 305 && elapsedTime >= 300);
+        assertTrue("Elapsed time should be 300, but was " + elapsedTime, elapsedTime <= 330 && elapsedTime >= 300);
     }
 
     @Test
@@ -146,7 +148,7 @@ public class WeakHandlerTest {
                 // Before I fixed impl of WeakHandler it always caused exceptions
             }
             if (mExceptionInThread.get() != null) {
-                throw mExceptionInThread.get(); // Exceptiin from HandlerThread. Sometimes it occured as well
+                throw mExceptionInThread.get(); // Exception from HandlerThread. Sometimes it occured as well
             }
             thread.getLooper().quit();
         }
@@ -155,40 +157,27 @@ public class WeakHandlerTest {
     @Test(timeout = 30000)
     public void concurrentAdd() throws NoSuchFieldException, IllegalAccessException, InterruptedException {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(10, 50, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(100));
-        final Set<Runnable> added = new HashSet<>();
+        final Set<Runnable> added = Collections.synchronizedSet(new HashSet());
+        final CountDownLatch latch = new CountDownLatch(999);
         // Adding 1000 Runnables from different threads
-        for (int i = 0; i < 1000; ++i) {
-            final boolean addToSet = i > 0;
-            final SleepyRunnable sleepyRunnable = new SleepyRunnable(i);
+        mHandler.post(new SleepyRunnable(0));
+        for (int i = 0; i < 999; ++i) {
+            final SleepyRunnable sleepyRunnable = new SleepyRunnable(i+1);
             executor.execute(new Runnable() {
                 @Override
                 public void run() {
                     mHandler.post(sleepyRunnable);
-                    if (!addToSet) {
-                        return;
-                    }
-                    synchronized (added) {
-                        added.add(sleepyRunnable);
-                        if (added.size() == 999) {
-                            added.notifyAll(); // #Notify1 - notifying when all runnables been added
-                        }
-                    }
+                    added.add(sleepyRunnable);
+                    latch.countDown();
                 }
             });
         }
 
-
         // Waiting until all runnables added
         // Notified by #Notify1
-        synchronized (added) {
-            while (added.size() < 999)
-                added.wait();
-        }
+        latch.await();
 
-        Field field = mHandler.getClass().getDeclaredField("mRunnables");
-        field.setAccessible(true);
-        ChainedRef ref = (ChainedRef) field.get(mHandler);
-        ref = ref.next;
+        ChainedRef ref = mHandler.mRunnables.next;
         while (ref != null) {
             assertTrue("Must remove runnable from chained list: " + ref.runnable, added.remove(ref.runnable));
             ref = ref.next;

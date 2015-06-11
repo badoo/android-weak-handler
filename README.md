@@ -35,7 +35,7 @@ repositories {
 }
 
 dependencies {
-    compile 'com.badoo.mobile:android-weak-handler:1.0'
+    compile 'com.badoo.mobile:android-weak-handler:1.1'
 }
 ```
 

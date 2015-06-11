@@ -31,6 +31,8 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import java.lang.ref.WeakReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Memory safer implementation of android.os.Handler
@@ -47,10 +49,13 @@ import java.lang.ref.WeakReference;
  *
  * Created by Dmytro Voronkevych on 17/06/2014.
  */
+@SuppressWarnings("unused")
 public class WeakHandler {
     private final Handler.Callback mCallback; // hard reference to Callback. We need to keep callback in memory
     private final ExecHandler mExec;
-    private final ChainedRef mRunnables = new ChainedRef(null);
+    private Lock mLock = new ReentrantLock();
+    @SuppressWarnings("ConstantConditions")
+    private final ChainedRef mRunnables = new ChainedRef(mLock, null);
 
     /**
      * Default constructor associates this handler with the {@link Looper} for the
@@ -76,7 +81,7 @@ public class WeakHandler {
      */
     public WeakHandler(@Nullable Handler.Callback callback) {
         mCallback = callback; // Hard referencing body
-        mExec = new ExecHandler(new WeakReference<Handler.Callback>(callback)); // Weak referencing inside ExecHandler
+        mExec = new ExecHandler(new WeakReference<>(callback)); // Weak referencing inside ExecHandler
     }
 
     /**
@@ -98,7 +103,7 @@ public class WeakHandler {
      */
     public WeakHandler(@NonNull Looper looper, @NonNull Handler.Callback callback) {
         mCallback = callback;
-        mExec = new ExecHandler(looper, new WeakReference<Handler.Callback>(callback));
+        mExec = new ExecHandler(looper, new WeakReference<>(callback));
     }
 
     /**
@@ -204,9 +209,9 @@ public class WeakHandler {
      * Remove any pending posts of Runnable r that are in the message queue.
      */
     public final void removeCallbacks(Runnable r) {
-        final ChainedRef runnableRef = mRunnables.findForward(r);
-        if (runnableRef != null) {
-            mExec.removeCallbacks(runnableRef.wrapper);
+        final WeakRunnable runnable = mRunnables.remove(r);
+        if (runnable != null) {
+            mExec.removeCallbacks(runnable);
         }
     }
 
@@ -216,9 +221,9 @@ public class WeakHandler {
      * all callbacks will be removed.
      */
     public final void removeCallbacks(Runnable r, Object token) {
-        final ChainedRef runnableRef = mRunnables.findForward(r);
-        if (runnableRef != null) {
-            mExec.removeCallbacks(runnableRef.wrapper, token);
+        final WeakRunnable runnable = mRunnables.remove(r);
+        if (runnable != null) {
+            mExec.removeCallbacks(runnable, token);
         }
     }
 
@@ -372,10 +377,16 @@ public class WeakHandler {
         return mExec.getLooper();
     }
 
-    private WeakRunnable wrapRunnable(Runnable r) {
-        final ChainedRef hardRef = ChainedRef.obtain(r);
+    private WeakRunnable wrapRunnable(@NonNull Runnable r) {
+        //noinspection ConstantConditions
+        if (r == null) {
+            throw new NullPointerException("Runnable can't be null");
+        }
+        // In previous version we tried to reuse ChainedRef references from pool
+        // unfortunately it caused several concurrency issues, so now we don't reuse them
+        final ChainedRef hardRef = new ChainedRef(mLock, r);
         mRunnables.insertAbove(hardRef);
-        return hardRef.wrapper = new WeakRunnable(new WeakReference<Runnable>(r), new WeakReference<ChainedRef>(hardRef));
+        return hardRef.wrapper;
     }
 
     private static class ExecHandler extends Handler {
@@ -400,7 +411,7 @@ public class WeakHandler {
         }
 
         @Override
-        public void handleMessage(Message msg) {
+        public void handleMessage(@NonNull Message msg) {
             if (mCallback == null) {
                 return;
             }
@@ -439,81 +450,71 @@ public class WeakHandler {
         ChainedRef next;
         @Nullable
         ChainedRef prev;
-        @Nullable
-        Runnable runnable;
-        @Nullable
-        WeakRunnable wrapper;
+        @NonNull
+        final Runnable runnable;
+        @NonNull
+        final WeakRunnable wrapper;
 
-        @Nullable
-        static ChainedRef sPool;
-        static int sPoolSize;
-        static final int MAX_POOL_SIZE = 15;
+        @NonNull
+        Lock lock;
 
-        public ChainedRef(Runnable r) {
+        public ChainedRef(@NonNull Lock lock, @NonNull Runnable r) {
             this.runnable = r;
+            this.lock = lock;
+            this.wrapper = new WeakRunnable(new WeakReference<>(r), new WeakReference<>(this));
         }
 
         public void remove() {
-            if (prev != null) {
-                prev.next = next;
-            }
-            if (next != null) {
-                next.prev = prev;
-            }
-            this.prev = null;
-            this.runnable = null;
-            this.wrapper = null;
-            synchronized (ChainedRef.class) {
-                if (sPoolSize > MAX_POOL_SIZE) {
-                    return;
+            final Lock lock = this.lock;
+            lock.lock();
+            try {
+                if (prev != null) {
+                    prev.next = next;
                 }
-                this.next = sPool;
-                sPool = this;
-                sPoolSize++;
+                if (next != null) {
+                    next.prev = prev;
+                }
+                prev = null;
+                next = null;
+            } finally {
+                lock.unlock();
             }
         }
 
         public void insertAbove(@NonNull ChainedRef candidate) {
-            if (this.next != null) {
-                this.next.prev = candidate;
-            }
+            lock.lock();
+            try {
+                if (this.next != null) {
+                    this.next.prev = candidate;
+                }
 
-            candidate.next = this.next;
-            this.next = candidate;
-            candidate.prev = this;
+                candidate.next = this.next;
+                this.next = candidate;
+                candidate.prev = this;
+            } finally {
+                lock.unlock();
+            }
         }
 
         @Nullable
-        public ChainedRef findForward(Runnable obj) {
-            ChainedRef curr = this;
-            while (curr != null) {
-                if (curr.runnable != null) {
+        public WeakRunnable remove(Runnable obj) {
+            lock.lock();
+            try {
+                ChainedRef curr = this.next; // Skipping head
+                while (curr != null) {
                     if (curr.runnable.equals(obj)) {
-                        return curr;
+                        break;
                     }
+                    curr = curr.next;
                 }
-                else if (obj == null) {
-                    return curr;
-                }
-                curr = curr.next;
-            }
-            return null;
-        }
-
-        public static ChainedRef obtain(Runnable r) {
-            ChainedRef result = null;
-            synchronized (ChainedRef.class) {
-                if (sPool != null) {
-                    result = sPool;
-                    sPool = sPool.next;
-                    sPoolSize--;
-                }
-            }
-            if (result != null) {
-                result.runnable = r;
+                if (curr == null)
+                    return null;
+                WeakRunnable result = curr.wrapper;
+                curr.remove();
                 return result;
+            } finally {
+                lock.unlock();
             }
-            return new ChainedRef(r);
         }
     }
 }

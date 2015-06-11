@@ -22,112 +22,61 @@ package com.badoo.mobile.util;
 
 import android.os.HandlerThread;
 import android.os.SystemClock;
+import android.support.test.runner.AndroidJUnit4;
+import android.test.suitebuilder.annotation.MediumTest;
 
-import junit.framework.TestCase;
+import com.badoo.mobile.util.WeakHandler.ChainedRef;
 
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import java.lang.reflect.Field;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static junit.framework.Assert.assertFalse;
+import static junit.framework.Assert.assertTrue;
 
 /**
  * Unit tests for {@link com.badoo.mobile.util.WeakHandler}
  *
  * Created by Dmytro Voronkevych on 17/06/2014.
  */
-public class WeakHandlerTest extends TestCase {
+@SuppressWarnings("ALL")
+@MediumTest
+@RunWith(AndroidJUnit4.class)
+public class WeakHandlerTest {
 
-    public void testChainedRef() {
-        final Runnable runHead = new DummyRunnable();
-        final Runnable runFirst = new DummyRunnable();
-        final Runnable runSecond = new DummyRunnable();
+    private HandlerThread mThread;
+    private WeakHandler mHandler;
 
-        WeakHandler.ChainedRef refHead = new WeakHandler.ChainedRef(runHead) {
-            @Override
-            public String toString() {
-                return "refHead";
-            }
-        };
-        WeakHandler.ChainedRef first = new WeakHandler.ChainedRef(runFirst) {
-            @Override
-            public String toString() {
-                return "first";
-            }
-        };
-        WeakHandler.ChainedRef second = new WeakHandler.ChainedRef(runSecond) {
-            @Override
-            public String toString() {
-                return "second";
-            }
-        };
-
-        refHead.insertAbove(first);
-        refHead.insertAbove(second);
-
-        assertSame(second, refHead.next);
-        assertSame(first, refHead.next.next);
-        assertNull(refHead.next.next.next);
-
-        assertNull(refHead.prev);
-        assertSame(second, first.prev);
-        assertSame(refHead, second.prev);
-
-        assertSame(second, refHead.findForward(runSecond));
-        assertSame(first, refHead.findForward(runFirst));
-        assertSame(refHead, refHead.findForward(runHead));
-        assertNull(refHead.findForward(new DummyRunnable()));
-
-        second.remove();
-        assertNull(second.prev);
-        assertNull(second.next);
-        assertNull(refHead.prev);
-        assertNull(first.next);
-        assertSame(first, refHead.next);
-        assertSame(refHead, first.prev);
-
-        assertSame(first, refHead.findForward(runFirst));
-        assertSame(refHead, refHead.findForward(runHead));
-        assertNull(refHead.findForward(runSecond));
-
-        first.remove();
-        assertSame(WeakHandler.ChainedRef.sPool, first); // It was put in pull
-        assertSame(second, first.next);
-        assertNotSame(refHead, first.next);
-        assertNull(first.prev);
-        assertNull(refHead.next);
+    @Before
+    public void setup() {
+        mThread = new HandlerThread("test");
+        mThread.start();
+        mHandler = new WeakHandler(mThread.getLooper());
     }
 
-    public void testChainedRefAlloc() {
-        WeakHandler.ChainedRef.sPool = null;
-        WeakHandler.ChainedRef.sPoolSize = 0;
-
-        WeakHandler.ChainedRef ref1 = WeakHandler.ChainedRef.obtain(null);
-        assertNotNull(ref1);
-        assertEquals(0, WeakHandler.ChainedRef.sPoolSize);
-        WeakHandler.ChainedRef ref2 = WeakHandler.ChainedRef.obtain(null);
-        assertNotNull(ref2);
-        assertNotSame(ref1, ref2);
-        assertEquals(0, WeakHandler.ChainedRef.sPoolSize);
-        ref1.remove();
-        assertEquals(1, WeakHandler.ChainedRef.sPoolSize);
-        ref2.remove();
-        assertEquals(2, WeakHandler.ChainedRef.sPoolSize);
-        assertSame(ref2, WeakHandler.ChainedRef.obtain(null));
-        assertEquals(1, WeakHandler.ChainedRef.sPoolSize);
-        assertSame(ref1, WeakHandler.ChainedRef.obtain(null));
-        assertEquals(0, WeakHandler.ChainedRef.sPoolSize);
+    @After
+    public void tearDown() {
+        mHandler.getLooper().quit();
     }
 
-    public void testPostDelayed() throws InterruptedException {
-        HandlerThread thread = new HandlerThread("test");
-        thread.start();
-
+    @Test
+    public void postDelayed() throws InterruptedException {
         final CountDownLatch latch = new CountDownLatch(1);
-
-        WeakHandler handler = new WeakHandler(thread.getLooper());
 
         long startTime = SystemClock.elapsedRealtime();
         final AtomicBoolean executed = new AtomicBoolean(false);
-        handler.postDelayed(new Runnable() {
+        mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 executed.set(true);
@@ -139,17 +88,12 @@ public class WeakHandlerTest extends TestCase {
         assertTrue(executed.get());
 
         long elapsedTime = SystemClock.elapsedRealtime() - startTime;
-        assertTrue(elapsedTime <= 305 && elapsedTime >= 300);
-        thread.getLooper().quit();
+        assertTrue("Elapsed time should be 300, but was " + elapsedTime, elapsedTime <= 305 && elapsedTime >= 300);
     }
 
-    public void testRemoveCallbacks() throws InterruptedException {
-        HandlerThread thread = new HandlerThread("test");
-        thread.start();
-
+    @Test
+    public void removeCallbacks() throws InterruptedException {
         final CountDownLatch latch = new CountDownLatch(1);
-
-        WeakHandler handler = new WeakHandler(thread.getLooper());
 
         long startTime = SystemClock.elapsedRealtime();
         final AtomicBoolean executed = new AtomicBoolean(false);
@@ -160,19 +104,125 @@ public class WeakHandlerTest extends TestCase {
                 latch.countDown();
             }
         };
-        handler.postDelayed(r, 300);
-        handler.removeCallbacks(r);
+        mHandler.postDelayed(r, 300);
+        mHandler.removeCallbacks(r);
         latch.await(1, TimeUnit.SECONDS);
         assertFalse(executed.get());
 
         long elapsedTime = SystemClock.elapsedRealtime() - startTime;
         assertTrue(elapsedTime > 300);
-        thread.getLooper().quit();
+    }
+
+    @Test(timeout = 30000)
+    public void concurrentRemoveAndExecute() throws Throwable {
+        final int repeatCount = 100;
+        final int numberOfRunnables = 10000;
+
+        // Councurrent cases sometimes very hard to spot, so we will do it by repeating same test 1000 times
+        // Problem was reproducing always by this test until I fixed WeakHandler
+        for (int testNum = 0; testNum < repeatCount; ++testNum) {
+            final AtomicReference<Throwable> mExceptionInThread = new AtomicReference<>();
+
+            HandlerThread thread = new HandlerThread("HandlerThread");
+            // Concurrent issue can occur inside HandlerThread or inside main thread
+            // Catching both of cases
+            thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                @Override
+                public void uncaughtException(Thread thread, Throwable ex) {
+                    mExceptionInThread.set(ex);
+                }
+            });
+            thread.start();
+
+            WeakHandler handler = new WeakHandler(thread.getLooper());
+            Runnable[] runnables = new Runnable[numberOfRunnables];
+            for (int i = 0; i < runnables.length; ++i) {
+                runnables[i] = new DummyRunnable();
+                handler.post(runnables[i]); // Many Runnables been posted
+            }
+
+            for (Runnable runnable : runnables) {
+                handler.removeCallbacks(runnable); // All of them now quickly removed
+                // Before I fixed impl of WeakHandler it always caused exceptions
+            }
+            if (mExceptionInThread.get() != null) {
+                throw mExceptionInThread.get(); // Exceptiin from HandlerThread. Sometimes it occured as well
+            }
+            thread.getLooper().quit();
+        }
+    }
+
+    @Test(timeout = 30000)
+    public void concurrentAdd() throws NoSuchFieldException, IllegalAccessException, InterruptedException {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(10, 50, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(100));
+        final Set<Runnable> added = new HashSet<>();
+        // Adding 1000 Runnables from different threads
+        for (int i = 0; i < 1000; ++i) {
+            final boolean addToSet = i > 0;
+            final SleepyRunnable sleepyRunnable = new SleepyRunnable(i);
+            executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    mHandler.post(sleepyRunnable);
+                    if (!addToSet) {
+                        return;
+                    }
+                    synchronized (added) {
+                        added.add(sleepyRunnable);
+                        if (added.size() == 999) {
+                            added.notifyAll(); // #Notify1 - notifying when all runnables been added
+                        }
+                    }
+                }
+            });
+        }
+
+
+        // Waiting until all runnables added
+        // Notified by #Notify1
+        synchronized (added) {
+            while (added.size() < 999)
+                added.wait();
+        }
+
+        Field field = mHandler.getClass().getDeclaredField("mRunnables");
+        field.setAccessible(true);
+        ChainedRef ref = (ChainedRef) field.get(mHandler);
+        ref = ref.next;
+        while (ref != null) {
+            assertTrue("Must remove runnable from chained list: " + ref.runnable, added.remove(ref.runnable));
+            ref = ref.next;
+        }
+
+        assertTrue("All runnables should present in chain, however we still haven't found " + added, added.isEmpty());
     }
 
     private class DummyRunnable implements Runnable {
         @Override
         public void run() {
+        }
+    }
+
+    private class SleepyRunnable implements Runnable {
+        private final int mNum;
+
+        public SleepyRunnable(int num) {
+            mNum = num;
+        }
+
+        @Override
+        public void run() {
+            try {
+                Thread.sleep(1000000);
+            }
+            catch (Exception e) {
+                // Ignored
+            }
+        }
+
+        @Override
+        public String toString() {
+            return String.valueOf(mNum);
         }
     }
 }

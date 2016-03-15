@@ -66,3 +66,6 @@ Credits
 Weak Handler is brought to you by [Badoo Trading Limited](http://corp.badoo.com) and it is released under the [MIT License](http://opensource.org/licenses/MIT).
 
 Created by [Dmytro Voronkevych](https://github.com/dmitry-voronkevich)
+
+##Blog
+Read more on our [tech blog](http://techblog.badoo.com/) or explore our other [open source projects](https://github.com/badoo)

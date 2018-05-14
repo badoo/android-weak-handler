@@ -17,7 +17,7 @@ You can read more [on our blog post.](http://techblog.badoo.com/blog/2014/08/28/
 Solution
 --------
 
-`WeakHandler` is trickier then `android.os.Handler` , it will keep `WeakReferences` to runnables and messages,
+`WeakHandler` is trickier than `android.os.Handler` , it will keep `WeakReferences` to runnables and messages,
 and GC could collect them once `WeakHandler` instance is not referenced any more.
 
 ![Screenshot](WeakHandler.png)

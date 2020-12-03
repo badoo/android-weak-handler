@@ -22,9 +22,10 @@ package com.badoo.mobile.util;
 
 import android.os.HandlerThread;
 import android.os.SystemClock;
-import android.support.test.runner.AndroidJUnit4;
-import android.test.FlakyTest;
-import android.test.suitebuilder.annotation.MediumTest;
+
+import androidx.test.filters.FlakyTest;
+import androidx.test.filters.MediumTest;
+import androidx.test.runner.AndroidJUnit4;
 
 import com.badoo.mobile.util.WeakHandler.ChainedRef;
 

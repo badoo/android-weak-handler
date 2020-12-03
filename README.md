@@ -7,11 +7,11 @@ Problem
 -------
 
 Original implementation of Handler always keeps hard reference to handler in queue of execution.
-Any object in Message or Runnable posted to `android.os.Handler` will be hard referenced for some time. 
+Any object in Message or Runnable posted to `android.os.Handler` will be hard referenced for some time.
 If you create anonymous Runnable and call to `postDelayed` with large timeout, that Runnable will be held
-in memory until timeout passes. Even if your Runnable seems small, it indirectly references owner class, 
+in memory until timeout passes. Even if your Runnable seems small, it indirectly references owner class,
 which is usually something as big as Activity or Fragment.
- 
+
 You can read more [on our blog post.](http://techblog.badoo.com/blog/2014/08/28/android-handler-memory-leaks)
 
 Solution
@@ -35,7 +35,7 @@ repositories {
 }
 
 dependencies {
-    compile 'com.badoo.mobile:android-weak-handler:1.1'
+    implementation 'com.badoo.mobile:android-weak-handler:1.2'
 }
 ```
 
@@ -47,12 +47,12 @@ import com.badoo.mobile.util.WeakHandler;
 public class ExampleActivity extends Activity {
 
     private WeakHandler mHandler; // We still need at least one hard reference to WeakHandler
-    
+
     protected void onCreate(Bundle savedInstanceState) {
         mHandler = new WeakHandler();
         ...
     }
-    
+
     private void onClick(View view) {
         mHandler.postDelayed(new Runnable() {
             view.setVisibility(View.INVISIBLE);

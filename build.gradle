@@ -59,6 +59,10 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    buildFeatures {
+        buildConfig false
+    }
 }
 
 if (project.hasProperty('badooMavenScript')) {

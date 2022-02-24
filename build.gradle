@@ -57,6 +57,8 @@ android {
         minSdkVersion 14
         targetSdkVersion 22
 
+        consumerProguardFile "consumer-rules.pro"
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

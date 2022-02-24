@@ -31,7 +31,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.badoo:android-weak-handler:1.2'
+    implementation 'com.github.badoo:android-weak-handler:1.3'
 }
 ```
 
@@ -61,7 +61,5 @@ Credits
 -------
 Weak Handler is brought to you by [Badoo Trading Limited](https://corp.badoo.com) and it is released under the [MIT License](https://opensource.org/licenses/MIT).
 
-Created by [Dmytro Voronkevych](https://github.com/dmitry-voronkevich)
-
-##Blog
+## Blog
 Read more on our [tech blog](http://techblog.badoo.com/) or explore our other [open source projects](https://github.com/badoo)

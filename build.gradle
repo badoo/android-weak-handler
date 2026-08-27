@@ -43,7 +43,7 @@ repositories {
 
 dependencies {
     implementation "androidx.annotation:annotation:1.1.0"
-    androidTestImplementation 'junit:junit:4.12'
+    androidTestImplementation 'junit:junit:4.13.1'
     androidTestImplementation 'androidx.test:runner:1.1.0'
 }
 
